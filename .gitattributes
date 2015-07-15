@@ -1,0 +1,27 @@
+* text=auto !eol
+/.cvsignore -text
+/Makefile -text
+bin/.cvsignore -text
+bin/Makefile -text
+bin/mcpMenu -text
+bin/showInterlocks -text
+doc/.cvsignore -text
+doc/Makefile -text
+etc/.cvsignore -text
+etc/Makefile -text
+etc/afterUtilities.tcl -text
+etc/fiducials.tcl -text
+etc/mcp.tcl -text
+etc/mcpMenu.tcl -text
+etc/showInterlocks.tcl -text
+etc/utils.tcl -text
+python/mcpop/__init__.py -text
+python/mcpop/fiducials.py -text
+src/.cvsignore -text
+src/Makefile -text
+src/main.c -text
+src/mcp_sockets.c -text
+src/mcp_sockets.h -text
+src/tclMcp.c -text
+ups/Makefile -text
+ups/mcpop.table -text

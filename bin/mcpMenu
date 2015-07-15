@@ -1,0 +1,47 @@
+#!/bin/sh
+#  avoid having to say -useTk every time
+#
+if [ X"$MCPOP_DIR" = X"" ]; then
+	echo "You must \"setup mcpop\" before running mcpMenu" >&2
+	exit 1
+fi
+
+dt=5				# update rate in seconds
+geom=""				# desired X geometry string
+
+while [ X"$1" != X"" ]; do
+	case "$1" in
+	  -g*)
+		if [ X"$2" = X"" ]; then
+		    echo "Please provide a value with -geom" >&2
+		else
+		    geom=$2; shift
+		fi
+		;;
+	  -h*)
+		cat <<EOF
+Start the mcpMenu
+
+Usage: mcpMenu [options]
+
+Options:
+    -h		Print this message
+    -dt n	Update every n seconds
+    -geom str   Put window at str (e.g. +1+1)
+EOF
+		exit 0;;
+	  -dt)
+		if [ X"$2" = X"" ]; then
+		    echo "Please provide a value with -dt" >&2
+		else
+		    dt=$2; shift
+		fi
+		;;
+	  *)
+		echo "Unknown option $1"
+		;;
+	esac
+	shift
+done
+
+$MCPOP_DIR/bin/iop $MCPOP_DIR/etc/mcpMenu.tcl

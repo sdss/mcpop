@@ -1,0 +1,20 @@
+setupRequired("sdsstools")
+setupRequired("tk")
+setupRequired(tcldp)
+setupRequired(plc)
+setupRequired(opscore)
+setupRequired(yannytools)
+
+envSet(TK_LIBRARY, ${TK_DIR}/src/library)
+envSet(DP_LIBRARY, ${TCLDP_DIR}/lib/dp)
+pathPrepend(PATH, ${PRODUCT_DIR}/bin)
+pathPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+#
+# Fake things for sdssmake
+#
+envSet(FTCL_DIR, /dev/null)
+envSet(TCLX_DIR, /dev/null)
+envSet(LIBFITS_DIR, /dev/null)
+envSet(PGPLOT_DIR, /dev/null)
+envSet(FPGPLOT_DIR, /dev/null)
+envSet(DERVISH_DIR, /dev/null)

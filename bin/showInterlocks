@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if [ X"$MCPOP_DIR" = X"" ]; then
+	echo "You must \"setup mcpop\" before running showInterlocks" >&2
+	exit 1
+fi
+
+$MCPOP_DIR/bin/iop $MCPOP_DIR/etc/showInterlocks.tcl
+exit 0
