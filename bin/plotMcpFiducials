@@ -133,7 +133,7 @@ def read_fiducials(fiducial_file, axis, readHeader=True):
     if os.path.exists(ffile):
         fiducial_file = ffile
     else:
-        ffile2 = os.path.expandvars("$MCP_FIDUCIALS_DIR/%s/fiducial-tables/%s.dat"%(ffile, axisAbbrevs[axisName]))
+        ffile2 = os.path.expandvars("/home/vxworks/mcp/%s/fiducial-tables/%s.dat"%(ffile, axisAbbrevs[axisName]))
         if not os.path.exists(ffile2):
             raise RuntimeError("I can find neither %s nor %s" % (ffile, ffile2))
 
@@ -434,7 +434,7 @@ if __name__ == "__main__":
             ffval = 168185
 
         if not args.fiducialFile:
-            ffile = os.path.expandvars("$MCP_FIDUCIALS_DIR/%s.dat")
+            ffile = os.path.expandvars("/home/vxworks/mcpbase/fiducial-tables/%s.dat")
         else:
             ffile = args.fiducialFile
 
