@@ -5,6 +5,10 @@ setupRequired(plc)
 setupRequired(opscore)
 setupRequired(yannytools)
 
+# Useful for running plotMcpFiducials and having it auto-detect the
+# old fiducial tables.
+setupOptional(mcp)
+
 envSet(TK_LIBRARY, ${TK_DIR}/src/library)
 envSet(DP_LIBRARY, ${TCLDP_DIR}/lib/dp)
 pathPrepend(PATH, ${PRODUCT_DIR}/bin)
