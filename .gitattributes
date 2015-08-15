@@ -4,6 +4,7 @@
 bin/.cvsignore -text
 bin/Makefile -text
 bin/mcpMenu -text
+bin/plotMcpFiducials -text
 bin/showInterlocks -text
 doc/.cvsignore -text
 doc/Makefile -text
@@ -15,8 +16,6 @@ etc/mcp.tcl -text
 etc/mcpMenu.tcl -text
 etc/showInterlocks.tcl -text
 etc/utils.tcl -text
-python/mcpop/__init__.py -text
-python/mcpop/fiducials.py -text
 src/.cvsignore -text
 src/Makefile -text
 src/main.c -text
