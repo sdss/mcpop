@@ -8,10 +8,12 @@ import time as pyTime
 from opscore.utility import astrotime
 try:
     import matplotlib.pyplot as pyplot
+    pyplot.ion()
 except ImportError:
     pyplot = None
 
 import numpy
+numpy.seterr(all='raise')
 import yanny
 
 def getMJD():
@@ -549,7 +551,9 @@ if __name__ == "__main__":
     fiducials_deg = numpy.empty_like(fiducials) + numpy.nan
     
     for i in range(len(fiducials)):
-        fiducials_deg[i] = numpy.mean(deg[fididx == fiducials[i]])
+        tmp = deg[fididx == fiducials[i]]
+        if tmp != []:
+            fiducials_deg[i] = numpy.mean(tmp)
 
     if args.verbose:
         for i in range(len(fiducials)):
@@ -766,14 +770,11 @@ if __name__ == "__main__":
         
         if fd != sys.stdout:
             fd.close()
-    #
+
     # Make desired plot
-    #
     if xvec:
-        #
         # Create the index vector if we need it
-        #
-        if xvec == "index":             # plot against the index
+        if xvec == "index" or 'index' not in locals():
             index = numpy.arange(0, len(pos[1]))
 
         if args.plotFile:
@@ -803,6 +804,9 @@ if __name__ == "__main__":
             if xvec != "velocity" and yvec != "velocity":
                 velocity = velocity[haveValue]
 
+        # Have to delete this from the local mapping, as it breaks matplotlib's
+        # TK backend. It will still be set for the shell when we exit.
+        del os.environ['TCL_LIBRARY']
         fig = pyplot.figure()
         axes = fig.add_axes((0.1, 0.1, 0.85, 0.80));
 
@@ -855,6 +859,4 @@ if __name__ == "__main__":
         if args.plotFile:
             fig.savefig(args.plotFile)
 
-        raw_input("Continue? ")
-
-    0
+        raw_input("Press enter to exit... ")
