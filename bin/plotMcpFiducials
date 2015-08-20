@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Plot and analyze new fiducial data before applying it to the mcp."""
+"""
+Plot and analyze new fiducial data before applying it to the mcp.
+
+Originally converted nearly line-by-line by RHL from iop/etc/fiducials.tcl,
+hence the generally unpythonic and cryptic syntax.
+"""
 import os
 import pwd
 import re
@@ -9,6 +14,12 @@ from opscore.utility import astrotime
 try:
     import matplotlib.pyplot as pyplot
     pyplot.ion()
+    pyplot.rcParams.update({'font.size':22,
+                            'axes.labelsize': 20,
+                            'legend.fontsize': 16,
+                            'xtick.labelsize': 18,
+                            'ytick.labelsize': 18,
+                            'axes.linewidth':2})
 except ImportError:
     pyplot = None
 
@@ -112,7 +123,7 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
 # Make a vector from 0 to number of fiducials that we've seen
 #
 def make_fiducials_vector(fididx, extend=True):
-    fiducials = sorted(x for x in fididx)
+    fiducials = sorted(set(x for x in fididx))
     #
     # Extend the fiducials vector to start at 0?
     #
@@ -205,12 +216,12 @@ def plot_ms(fig, ms_on, ms_off, axisName, tbase):
     axes = fig.get_axes()[0]
     ymin, ymax = axes.get_ylim()
     
-    for ms, ctype in [(ms_on, 'blue',), (ms_off, 'cyan',)]:
+    for ms, ctype, label in [(ms_on, 'blue', 'MS on'), (ms_off, 'cyan', 'MS off')]:
         ms_time = numpy.array([t for t, a in zip(ms["time"], ms_on["axis"]) if a == axisName.upper()])
         ms_time = ms_time[ms_time > 0] - tbase
         y = numpy.zeros_like(ms_time) + ymin + 0.1*(ymax - ymin)
 
-        axes.plot(ms_time, y, "+", color=ctype)
+        axes.plot(ms_time, y, "+", ms=10, mew=3, color=ctype, label=label)
 
 def foo():
     pass
@@ -389,7 +400,7 @@ if __name__ == "__main__":
                 sys.exit(1)
                 
             mjd = mat.group(1)
-      
+
         dirName = args.mjd_dir_fmt % args.mjd
 
         dfile = os.path.join(dirName, args.fileName)
@@ -438,7 +449,8 @@ if __name__ == "__main__":
         if not args.fiducialFile:
             ffile = os.path.expandvars("/home/vxworks/mcpbase/fiducial-tables/%s.dat")
         else:
-            ffile = args.fiducialFile
+            # makes things work if the supplied '~' in the dirname.
+            ffile = os.path.expanduser(args.fiducialFile)
 
         try:
             ffile, vecs, header = read_fiducials(ffile, axisName)
@@ -503,9 +515,9 @@ if __name__ == "__main__":
                 time1 = time[-1]
             
             tmp  = (time >= time0) & (time <= time1)
-            index = range(0,)
+            index = numpy.arange(len(time))[tmp]
         else:
-            index = range(0, time)
+            index = range(0, len(time))
             if index0 < 0:
                 index0 = 0
             if index1 == 0 or index1 >= len(time):
@@ -515,6 +527,13 @@ if __name__ == "__main__":
 
         for v in names:
             vecs[v] = vecs[v][tmp]
+        time = time[tmp]
+        deg = deg[tmp]
+        fididx = fididx[tmp]
+        velocity = velocity[tmp]
+        for i in (1, 2,):
+            pos[i] = pos[i][tmp]
+
     #
     # Are there any datavalues left?
     #
@@ -806,8 +825,9 @@ if __name__ == "__main__":
 
         # Have to delete this from the local mapping, as it breaks matplotlib's
         # TK backend. It will still be set for the shell when we exit.
-        del os.environ['TCL_LIBRARY']
-        fig = pyplot.figure()
+        if os.environ.get('TCL_LIBRARY',None) is not None:
+            del os.environ['TCL_LIBRARY']
+        fig = pyplot.figure(figsize=(10,8))
         axes = fig.add_axes((0.1, 0.1, 0.85, 0.80));
 
         xmin = min(x); xmax = max(x)
@@ -819,14 +839,13 @@ if __name__ == "__main__":
             if args.time1 != 0:
                 xmax = time1 - tbase
 
-        axes.set_xlim(xmin, xmax)
-        axes.set_ylim(ymin, ymax)
+        # set limits to just beyond the data on all sides
+        axes.margins(0.1)
 
         l = velocity >= 0
-        axes.plot(x[l], y[l], "r.")
+        axes.plot(x[l], y[l], "rx",ms=10,mew=3,label='v>=0')
         l = velocity < 0
-        axes.plot(x[l], y[l], "g.")
-
+        axes.plot(x[l], y[l], "g+",ms=10,mew=3,label='v<0')
 
         if args.ms:
             plot_ms(fig, ms_on, ms_off, axisName, tbase)
@@ -836,10 +855,6 @@ if __name__ == "__main__":
             title += " -reset"
         if args.updown:
             title += " -updown"
-        title += ".  Red: v > 0" 
-
-        if args.ms:
-            title += "  Blue: MS.ON, Cyan: MS.OFF"
 
         if args.fiducialFile:
             title += "  %s" % args.fiducialFile
@@ -847,12 +862,14 @@ if __name__ == "__main__":
 
         if xvec == "time" and tbase:
             if args.verbose:
-                print "Initial time on plot: [utclock [expr int($tbase + $xmin)]]"
+                print "Initial time on plot:",tbase-xmin
             axes.set_xlabel("time - %s" % tbase)
         else:
             axes.set_xlabel(xvec)
 
         axes.set_ylabel(yvec)
+
+        legend = axes.legend(loc='best',numpoints=1, fancybox=True, framealpha=0.5)
 
         fig.show()
 
