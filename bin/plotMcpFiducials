@@ -263,7 +263,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-canonical", action="store_true", default=False, 
                         help="Set the `canonical' fiducial to its canonical value")
-    parser.add_argument("-setCanonical", type=str,
+    parser.add_argument("-setCanonical", type=str, default=None,
                           help="""Specify the canonical fiducial and optionally position,
      e.g. -setCanonical 78
           -setCanonical 78:168185
@@ -324,15 +324,14 @@ if __name__ == "__main__":
            sys.exit(1)
 
     if args.setCanonical:
-        mat = re.search(r"^([0-9]+)(\:([0-9]+))?$", args.setCanonical)
-
-        if not mat:
-            print >> sys.stderr, "Invalid -setCanonical argument: %s" % args.setCanonical
-            sys.exit(1)
-            
-        ff, ffval = mat.groups()[1:3]
+        temp = args.setCanonical.split(':')
+        ff = int(temp[0])
+        try:
+            ffval = int(temp[1])
+        except:
+            ffval = None
     else:
-        ff, ffval = None, None
+        ff,ffval = None, None
 
     if args.scale:
         if not args.absolute:
@@ -371,7 +370,7 @@ if __name__ == "__main__":
     if args.rotator:
         axisName = "rotator"
         struct = "ROT_FIDUCIAL"
-        names ["time", "fididx", "pos1", "pos2", "deg", "latch", "velocity"]
+        names = ["time", "fididx", "pos1", "pos2", "deg", "latch", "velocity"]
 
     if args.read_old_mcpFiducials:
         names.append("true")
@@ -538,7 +537,7 @@ if __name__ == "__main__":
     # Are there any datavalues left?
     #
     if len(time) == 0:
-        raise RuntimeError("You haven't asked for any points")
+        raise RuntimeError("No points to plot after applying the specified arguments.")
     #
     # Reduce time to some readable value
     #
