@@ -10,6 +10,7 @@ import pwd
 import re
 import sys
 import time as pyTime
+import gzip
 from opscore.utility import astrotime
 try:
     import matplotlib.pyplot as pyplot
@@ -25,7 +26,7 @@ except ImportError:
 
 import numpy
 numpy.seterr(all='raise')
-import yanny
+from sdss.utilities import yanny
 
 def getMJD():
     """Get the MJD for the current day as an int."""
@@ -207,6 +208,48 @@ def read_fiducials(fiducial_file, axis, readHeader=True):
 
     return fiducial_file, vecs, header
 
+def get_fiducial_file(filename, mjd, mjd_dir_fmt, verbose=False):
+    """Figure out where the file is, and return the full path."""
+
+    def check_exists(filename):
+        if not filename:
+            return None
+        if os.path.exists(filename):
+            return filename
+        elif os.path.exists(filename+'.gz'):
+            return filename+'.gz'
+        else:
+            return None
+        
+    if not filename:
+        filename = "mcpFiducials-%d.dat" % (mjd)
+    else:
+        if mjd != getMJD():
+            print >> sys.stderr, "You may not specify both [fileName] and -mjd"
+            sys.exit(1)
+   
+    result = check_exists(filename)
+    if result is not None:
+        if verbose: print "File: %s" % result
+        return result
+
+    if re.search(r"%d", mjd_dir_fmt): # need the MJD
+        mat = re.search(r"mcpFiducials-([0-9]+).dat", filename)
+        if not mat:
+            print >> sys.stderr, "I cannot find a file called %s, and I cannot parse it for an mjd" % filename
+            sys.exit(1)
+
+        mjd = mat.group(1)
+
+    dirName = mjd_dir_fmt % int(mjd)
+
+    result = check_exists(os.path.join(dirName, filename))
+    if result is None:
+        print >> sys.stderr, "I cannot find %s in . or %s" % (filename, dirName)
+        sys.exit(1)
+
+    if verbose: print "File: %s" % result
+    return result
 
 ###############################################################################
 #
@@ -222,9 +265,6 @@ def plot_ms(fig, ms_on, ms_off, axisName, tbase):
         y = numpy.zeros_like(ms_time) + ymin + 0.1*(ymax - ymin)
 
         axes.plot(ms_time, y, "+", ms=10, mew=3, color=ctype, label=label)
-
-def foo():
-    pass
 
 if __name__ == "__main__":
     import argparse
@@ -377,40 +417,9 @@ if __name__ == "__main__":
     else:
         names.append("true1")
         names.append("true2")
-# 170
-    #
-    # Find the desired file
-    #
-    if not args.fileName:
-        args.fileName = "mcpFiducials-%d.dat" % (args.mjd)
-    else:
-        if args.mjd != getMJD():
-            print >> sys.stderr, "You may not specify both [fileName] and -mjd"
-            sys.exit(1)
-   
-    if args.fileName and os.path.exists(args.fileName):
-        dfile = args.fileName
-    else:
-        if re.search(r"%d", args.mjd_dir_fmt): # need the MJD
-            mat = re.search(r"mcpFiducials-([0-9]+).dat", args.fileName)
-            if not mat:
-                print >> sys.stderr, "I cannot find a file called %s, and I cannot parse it for an mjd" % \
-                    args.fileName
-                sys.exit(1)
-                
-            mjd = mat.group(1)
 
-        dirName = args.mjd_dir_fmt % args.mjd
+    dfile = get_fiducial_file(args.fileName, args.mjd, args.mjd_dir_fmt, verbose=args.verbose)
 
-        dfile = os.path.join(dirName, args.fileName)
-        if not os.path.exists(dfile):
-            print >> sys.stderr, "I cannot find %s in . or %s" % (args.fileName, dirName)
-            sys.exit(1)
-
-        args.fileName = dfile
-        
-    if args.verbose:
-        print "File: %s" % args.fileName
 #L202
     #
     # Check that the requested vectors exist
@@ -464,8 +473,11 @@ if __name__ == "__main__":
 
         print "Using canonical position %d for fiducial %d from %s" % (ffval, ff , ffile)
         del vecs
-    #
-    pars = yanny.read_yanny(dfile)
+
+    if os.path.splitext(dfile)[1] == '.gz':
+        pars = yanny.yanny(gzip.open(dfile, 'rb'))
+    else:
+        pars = yanny.yanny(dfile)
     vecs = pars[struct]
     if args.ms:
         ms_on =  pars["MS_ON"]

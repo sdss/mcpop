@@ -3,7 +3,7 @@ setupRequired("tk")
 setupRequired(tcldp)
 setupRequired(plc)
 setupRequired(opscore)
-setupRequired(yannytools)
+setupRequired(sdss_python_module)
 
 # Useful for running plotMcpFiducials and having it auto-detect the
 # old fiducial tables.
