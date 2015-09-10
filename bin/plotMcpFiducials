@@ -34,31 +34,28 @@ def getMJD():
 
 axisAbbrevs = dict(azimuth="az", altitude="alt", rotator="rot")
 
-#
-# Reset the position vector <pos> every time it crosses the first
-# fiducial in the vector fididx
-#
 def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
-    #
+    """
+    Reset the position vector <pos> every time it crosses the first
+    fiducial in the vector fididx
+    """
+
     # Find the indices where the velocity changes sign
-    #
     v0 = list(v for v in velocity); v0[0:0]        = [velocity[0]]; v0 = numpy.array(v0)
     v1 = list(v for v in velocity); v1[len(v1):] = [-velocity[-1]]; v1 = numpy.array(v1)
     tmp = numpy.arange(0, len(pos) + 1)[v0*v1 < 0]
-    #
+
     # Generate a vector with the `sweep number', incremented every time
     # the velocity changes sign
-    #
     sweep = []                          # vector specifying which sweep the fiducial belongs to
     for i in range(len(tmp) - 1):
         sweep += (tmp[i+1] - tmp[i])*[i]
 
     sweep += (len(fididx) - len(sweep))*[i] # make sweep and fididx have same length
     sweep = numpy.array(sweep)
-    #
+
     # Choose the average fiducial as a standard (it should be in the middle of the range), resetting the
     # offset to zero whenever we see it
-    #
     nff, ff = 0, 0.0
     for i in range(len(tmp)):
         tmp = fididx[numpy.where(sweep == i)]
@@ -70,20 +67,17 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
     ff = int(ff/nff + 0.5); ffval = 0.0
     if verbose:
         print "Resetting at fiducial %d" % ff
-    #
+
     # Find the indices where we see the ff fiducial
-    #
     tmp = numpy.arange(len(pos))[numpy.logical_or(fididx == ff, fididx == ff + ud_delta)]
-    #
+
     # Generate a vector of corrections; the loop count is the number
     # of fiducial ff crossings, not the number of fiducial crossings
-    #
     corrections = {}
     for i in range(len(tmp)):
         corrections[sweep[tmp[i]]] = ffval - pos[tmp[i]]
-    #
+
     # Did any sweeps miss the `canonical' fiducials?
-    #
     nsweep = sweep[-1] + 1
     for s in range(nsweep):
         if corrections.has_key(s):
@@ -107,27 +101,22 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
                 corrections[s] = corrections[s0]
         else:
             corrections[s] = corrections[s1]
-    #
+
     # Build a corrections vector the same length as e.g. $pos
-    #
     corr = numpy.empty_like(pos) + 1.1e10
     for s, c in corrections.items():
         corr[sweep == s] = c
-    #
+
     # Apply those corrections
-    #
     pos += corr
 
     return pos
 
-#
-# Make a vector from 0 to number of fiducials that we've seen
-#
 def make_fiducials_vector(fididx, extend=True):
-    fiducials = sorted(set(x for x in fididx))
-    #
+    """Make a vector from 0 to number of fiducials that we've seen."""
+    fiducials = sorted(set(fididx))
+
     # Extend the fiducials vector to start at 0?
-    #
     if extend:
         fiducials[0:0] = range(0, fiducials[0])
 
@@ -138,7 +127,7 @@ def read_fiducials(fiducial_file, axis, readHeader=True):
     Read the positions of the fiducials for AXIS into VECS findex, p1 and p2
 
     FIDUCIAL_FILE may be a filename, or a format expecting a single string
-    argument (az, alt, or rot), or an MCP version (passed by reference)
+    argument (az, alt, or rot), or an MCP version.
     """
     ffile = fiducial_file
     if re.search(r"%s", ffile):
@@ -182,9 +171,8 @@ def read_fiducials(fiducial_file, axis, readHeader=True):
                 val = [float(x) for x in val.split()]
 
             header[var] = val
-    #
+
     # Done with header; read data
-    #
     vecNames = [("findex", 0, int), ("p1", 1, float), ("p2", 5, float)]
     vecs = {}
     for v, col, t in vecNames:
@@ -200,9 +188,8 @@ def read_fiducials(fiducial_file, axis, readHeader=True):
             vecs[v].append(fields[col])
 
     ffd.close()
-    #
+
     # Convert to numpy arrays
-    #
     for v, col, tt in vecNames:
         vecs[v] = numpy.array(vecs[v], dtype=tt)
 
@@ -240,8 +227,9 @@ def get_fiducial_file(filename, mjd, mjd_dir_fmt, verbose=False):
             sys.exit(1)
 
         mjd = mat.group(1)
-
-    dirName = mjd_dir_fmt % int(mjd)
+        dirName = mjd_dir_fmt % int(mjd)
+    else:
+        dirName = mjd_dir_fmt
 
     result = check_exists(os.path.join(dirName, filename))
     if result is None:
@@ -251,11 +239,8 @@ def get_fiducial_file(filename, mjd, mjd_dir_fmt, verbose=False):
     if verbose: print "File: %s" % result
     return result
 
-###############################################################################
-#
-# Plot MS.ON information
-#
 def plot_ms(fig, ms_on, ms_off, axisName, tbase):
+    """Plot the ms on/off values as blue and cyan points, respectively."""
     axes = fig.get_axes()[0]
     ymin, ymax = axes.get_ylim()
     
@@ -565,10 +550,9 @@ if __name__ == "__main__":
     if args.verbose:
         fiducials = make_fiducials_vector(fididx, False)
         print "Fiducials crossed: %s" % ", ".join(str(x) for x in fiducials)
-    #
+
     # If we want to analyse the `up' and `down' fiducials separately,
     # add ud_delta to fididx for all crossings with -ve velocity
-    #
     if args.updown:
         ud_delta = max(fididx) + 5
         fididx[velocity < 0] += ud_delta
@@ -868,7 +852,7 @@ if __name__ == "__main__":
             title += " -updown"
 
         if args.fiducialFile:
-            title += "  %s" % args.fiducialFile
+            title += "  %s" % ffile
         axes.set_title(title)
 
         if xvec == "time" and tbase:
