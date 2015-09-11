@@ -21,11 +21,12 @@ try:
                             'xtick.labelsize': 18,
                             'ytick.labelsize': 18,
                             'axes.linewidth':2})
+    from matplotlib import gridspec
 except ImportError:
     pyplot = None
 
 import numpy as np
-# np.seterr(all='raise')
+np.seterr(all='raise')
 from sdss.utilities import yanny
 
 def getMJD():
@@ -128,7 +129,7 @@ def read_fiducials(fiducial_file, axisName, readHeader=True):
     """
     ffile = fiducial_file
     if re.search(r"%s", ffile):
-        ffile = ffile % axisAbbrevs[axisName]
+        ffile = os.path.expanduser(os.path.expandvars(ffile % axisAbbrevs[axisName]))
         
     if os.path.exists(ffile):
         fiducial_file = ffile
@@ -236,6 +237,135 @@ def get_fiducial_file(filename, mjd, mjd_dir_fmt, verbose=False):
     if verbose: print "File: %s" % result
     return result
 
+def set_canonical_fiducials(ff, axisName, fiducialFile):
+    """Set up the canonical fiducial values."""
+    if axisName == 'azimuth':
+        if ff is None:
+            ff = 19
+        ffval = 31016188
+    elif axisName == 'altitude':
+        if ff is None:
+            ff = 1
+        ffval = 3825222
+    elif axisName == 'rotator':
+        if ff is None:
+            ff = 78
+        ffval = 168185
+
+    if not fiducialFile:
+        ffile = os.path.expandvars("/home/vxworks/mcpbase/fiducial-tables/%s.dat")
+    else:
+        # makes things work if '~' is in the dirname.
+        ffile = os.path.expanduser(fiducialFile)
+
+    try:
+        ffile, vecs, header = read_fiducials(ffile, axisName)
+    except Exception, e:
+        raise RuntimeError("Failed to read %s for canonical fiducial: %s" % (ffile, e))
+
+    if ff != header["Canonical fiducial"]:
+        raise RuntimeError("You may only use -setCanonical %d if %d is the canonical fiducial in %s" %
+                           (ff, ff, ffile))
+
+    ffval = (vecs["p1"][vecs["findex"] == ff][0]).copy()
+
+    print "Using canonical position %d for fiducial %d from %s" % (ffval, ff , ffile)
+
+    return ff,ffval,ffile
+
+def plot_one(fig, ax, x, y, xlabel, ylabel, axisName, velocity, ffile,
+             ms, reset, updown, time0, tbase):
+
+    # !!!!!!!!!
+    # TBD: need to re-include this!
+    # if args.error:
+    #     haveValue = np.where(fpos[1][fididx] != 0) # we have a measurement of this fiducial
+    #     if args.errormax > 0:
+    #         haveValue = np.logical_and(haveValue, abs(y) < args.errormax)
+
+    #     x = x[haveValue]
+    #     y = y[haveValue]
+    #     if xlabel != "velocity" and ylabel != "velocity":
+    #         velocity = velocity[haveValue]
+    # !!!!!!!!!
+
+    # axes = fig.add_axes((0.1, 0.1, 0.85, 0.80));
+
+    xmin = min(x); #xmax = max(x)
+    # ymin = min(y); ymax = max(y)
+
+    if xlabel == "time":
+        if time0 != 0:
+            xmin = time0 - tbase
+        # if args.time1 != 0:
+        #     xmax = time1 - tbase
+
+    # set limits to just beyond the data on all sides
+    ax.margins(0.1)
+
+    l = velocity >= 0
+    ax.plot(x[l], y[l], "rx",ms=10,mew=3,label='v>=0')
+    l = velocity < 0
+    ax.plot(x[l], y[l], "g+",ms=10,mew=3,label='v<0')
+
+    if ms:
+        plot_ms(fig, ms['on'], ms['off'], axisName, tbase)
+
+    ax.set_ylabel(ylabel)
+    if xlabel == "time" and tbase:
+        print "Initial time on plot:",tbase-xmin
+        ax.set_xlabel("time - %s" % tbase)
+    else:
+        ax.set_xlabel(xlabel)
+
+    ax.legend(loc='best',numpoints=1, fancybox=True, framealpha=0.5)
+
+    fig.show()
+
+def plot_data(axisName, vecs, index, plotFile, ffile,
+              ms, reset, updown, time0, tbase):
+    """Generate plots of (time,deg,index,etc.) vs. the fiducial positions."""
+
+    def make_filename(axisName,xlabel,ylabel):
+        if plotFile:
+            filename = "%s-%s-%s" % (axisName, xlabel, ylabel)
+            if reset:
+                filename += "-R"
+            if updown:
+                filename += "-U"
+            filename += ".png"
+        else:
+            filename = ''
+        return filename
+
+    # Have to delete this from the local mapping, as it breaks matplotlib's
+    # TK backend. It will still be set for the shell when we exit.
+    if os.environ.get('TCL_LIBRARY',None) is not None:
+        del os.environ['TCL_LIBRARY']
+
+    title = axisName
+    if reset:
+        title += " -reset"
+    if updown:
+        title += " -updown"
+    title += "\n  %s" % ffile
+
+    labels = ['index','deg','time','fididx']
+    for ylabel in ['pos1','pos2']:
+        fig = pyplot.figure(figsize=(18,10))
+        gs = gridspec.GridSpec(2, 2)#, height_ratios=[3, 1])
+        ax = []
+        pyplot.suptitle(title)
+        for i,xlabel in enumerate(labels):
+            ax.append(pyplot.subplot(gs[i]))
+            plotfile = make_filename(axisName,xlabel,ylabel)
+            if xlabel == 'index':
+                plot_one(fig, ax[i], index, vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, reset, updown, time0, tbase)
+            else:
+                plot_one(fig, ax[i], vecs[xlabel], vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, reset, updown, time0, tbase)
+        if plotfile:
+            fig.savefig(plotfile)
+
 def plot_ms(fig, ms_on, ms_off, axisName, tbase):
     """Plot the ms on/off values as blue and cyan points, respectively."""
     axes = fig.get_axes()[0]
@@ -248,7 +378,7 @@ def plot_ms(fig, ms_on, ms_off, axisName, tbase):
 
         axes.plot(ms_time, y, "+", ms=10, mew=3, color=ctype, label=label)
 
-def do_scale(fiducials, fiducials_deg, axisName, pos, fididx, verbose=False):
+def do_scale(fiducials, fiducials_deg, axisName, pos, fpos, nfpos, fididx, verbose=False):
     """
     If the axis wraps, ensure that pairs of fiducials seen 360 degrees apart are
     always separated by the same amount -- i.e. estimate the axis' scale.
@@ -256,7 +386,7 @@ def do_scale(fiducials, fiducials_deg, axisName, pos, fididx, verbose=False):
     axis_scale = {}
 
     match = {}
-    for n in (1, 2,):
+    for n in ('pos1','pos2'):
         ndiff, diff = 0, 0.0
         for i in range(len(fiducials)):
             # skip missing ones
@@ -320,6 +450,7 @@ def do_scale(fiducials, fiducials_deg, axisName, pos, fididx, verbose=False):
                     fpos[n][match[i]] = mean + diff
 
     print "Encoder2/Encoder1 - 1 = %.6e" % (axis_scale[2]/axis_scale[1] - 1)
+    return axis_scale
 
 def main():
     import argparse
@@ -386,8 +517,7 @@ def main():
  """)
     parser.add_argument("-ms", action="store_true", default=False,
                         help="Show MS actions (must have -xvec time)")
-    parser.add_argument("-plotFile", type=str, help="""Write plot to this file.
- If the filename is given as "file", a name will be chosen for you.""")
+    parser.add_argument("-plotFile", action="store_true", help="""Write plot to a file (name automatically determined).""")
     parser.add_argument("-tableFile", type=str, default='',
                         help="Write fiducials table to this file (may be \"stdout\", or \"-\")")
     parser.add_argument("-verbose", action="store_true", default=False,
@@ -453,7 +583,6 @@ def main():
         print >> sys.stderr, "Please specify only one axis"
         sys.exit(1)
    
-    axis_scale1 = 0; axis_scale2 = 0
     if args.altitude:
         axisName = "altitude"
         struct = "ALT_FIDUCIAL"
@@ -492,75 +621,31 @@ def main():
         raise RuntimeError("There is no vector %s in the file" % yvec)
 
     # What are the canonical values of the fiducials?  We get them from a pre-existing fiducials file
-    if ffval is None:                # not specified via -setCanonical
-        if args.azimuth:
-            if ff is None:
-                ff = 19
-            ffval = 31016188
-        elif args.altitude:
-            if ff is None:
-                ff = 1
-            ffval = 3825222
-        else:
-            if ff is None:
-                ff = 78
-            ffval = 168185
-
-        if not args.fiducialFile:
-            ffile = os.path.expandvars("/home/vxworks/mcpbase/fiducial-tables/%s.dat")
-        else:
-            # makes things work if the supplied '~' in the dirname.
-            ffile = os.path.expanduser(args.fiducialFile)
-
-        try:
-            ffile, vecs, header = read_fiducials(ffile, axisName)
-        except Exception, e:
-            raise RuntimeError("Failed to read %s for canonical fiducial: %s" % (ffile, e))
-
-        if ff != header["Canonical fiducial"]:
-            raise RuntimeError("You may only use -setCanonical %d if %d is the canonical fiducial in %s" %
-                               (ff, ff, ffile))
-
-        ffval = vecs["p1"][vecs["findex"] == ff][0]
-
-        print "Using canonical position %d for fiducial %d from %s" % (ffval, ff , ffile)
-        del vecs
+    # not specified via -setCanonical
+    if ffval is None:
+        ff, ffval, ffile = set_canonical_fiducials(ff, axisName, args.fiducialFile)
 
     if os.path.splitext(dfile)[1] == '.gz':
-        pars = yanny.yanny(gzip.open(dfile, 'rb'))
+        pars = yanny.yanny(gzip.open(dfile, 'rb'),np=True)
     else:
         pars = yanny.yanny(dfile)
     vecs = pars[struct]
+    ms = {}
     if args.ms:
-        ms_on =  pars["MS_ON"]
-        ms_off = pars["MS_OFF"]
+        ms['on'] =  pars["MS_ON"]
+        ms['off'] = pars["MS_OFF"]
 
     if args.verbose:
-        print "Vectors: %s" % ", ".join(vecs.keys())
-
-    for k, v in vecs.items():
-        vecs[k] = np.array(v, dtype=int if k in("fididx",) else float)
-    
-    # remove vectors that weren't read
-    names = [n for n in names if vecs.get(n) is not None]
-
-    # Unpack vectors for syntactic convenience.  N.b. these are just new names for the same data
-    time = vecs["time"]
-    deg = vecs["deg"]
-    fididx = vecs["fididx"]
-    velocity = vecs["velocity"]
-    pos = {}
-    for i in (1, 2,):
-        pos[i] = vecs["pos%d" % i]
+        print "Vectors: %s" % ", ".join(vecs.dtype.names)
 
     # Discard early data if so directed
     time0, time1 = args.time0, args.time1
     index0, index1 = args.index0, args.index1
     tmod = 10000
-    tbase = tmod*int(time[0]/tmod)
+    tbase = tmod*int(vecs['time'][0]/tmod)
 
     def rescale_time(t0):
-        if t0 != 0 and t0 < time[0]:
+        if t0 != 0 and t0 < vecs['time'][0]:
             t0 = tbase + abs(t0)
 
     rescale_time(time0)
@@ -572,61 +657,59 @@ def main():
                 print >> sys.stderr, "Ignoring index[01] in favour of time[01]"
 
             if time0 == 0:
-                time0 = time[0]
+                time0 = vecs['time'][0]
             if time1 == 0:
-                time1 = time[-1]
+                time1 = vecs['time'][-1]
             
-            tmp  = (time >= time0) & (time <= time1)
-            index = np.arange(len(time))[tmp]
+            tmp  = (vecs['time'] >= time0) & (vecs['time'] <= time1)
         else:
-            index = range(0, len(time))
+            index = range(0, len(vecs['time']))
             if index0 < 0:
                 index0 = 0
-            if index1 == 0 or index1 >= len(time):
-                index1 = len(time) - 1
+            if index1 == 0 or index1 >= len(vecs['time']):
+                index1 = len(vecs['time']) - 1
 
             tmp = index >= index0 and index <= index1
 
-        for v in names:
-            vecs[v] = vecs[v][tmp]
-        time = time[tmp]
-        deg = deg[tmp]
-        fididx = fididx[tmp]
-        velocity = velocity[tmp]
-        for i in (1, 2,):
-            pos[i] = pos[i][tmp]
+        vecs = vecs[tmp]
+
+    # re-create the index array into the newly-truncated data.
+    index = np.arange(len(vecs['time']))
 
     # Are there any datavalues left?
-    if len(time) == 0:
+    if len(vecs['time']) == 0:
         raise RuntimeError("No points to plot after applying the specified arguments.")
 
     # Reduce time to some readable value
-    time -= tbase
+    vecs['time'] -= tbase
     # Discard the non-mark rotator fiducials
+    # !!!!!!!!!!!!!!!!!!!!
+    # TBD: what does this mean?
+    # !!!!!!!!!!!!!!!!!!!!
     if args.rotator:
-        tmp  = fididx > 0
+        tmp  = vecs['fididx'] > 0
         for v in vecs.values():
             c = v[tmp]
 
     if args.verbose:
-        fiducials = make_fiducials_vector(fididx, False)
+        fiducials = make_fiducials_vector(vecs['fididx'], False)
         print "Fiducials crossed: %s" % ", ".join(str(x) for x in fiducials)
 
     # If we want to analyse the `up' and `down' fiducials separately,
     # add ud_delta to fididx for all crossings with -ve velocity
     if args.updown:
-        ud_delta = max(fididx) + 5
-        fididx[velocity < 0] += ud_delta
+        ud_delta = max(vecs['fididx']) + 5
+        vecs['fididx'][vecs['velocity'] < 0] += ud_delta
     else:
         ud_delta = 0
     # Process fiducial data
     # Start by finding the names of all fiducials crossed
-    fiducials = make_fiducials_vector(fididx)
+    fiducials = make_fiducials_vector(vecs['fididx'])
     # Find the approximate position of each fiducial (in degrees)
     fiducials_deg = np.empty_like(fiducials) + np.nan
     
     for i in range(len(fiducials)):
-        tmp = deg[fididx == fiducials[i]]
+        tmp = vecs['deg'][vecs['fididx'] == fiducials[i]]
         if tmp != []:
             fiducials_deg[i] = np.mean(tmp)
 
@@ -639,11 +722,10 @@ def main():
     # Unless we just want to see the fiducial errors (-error), estimate
     # the mean of each fiducial value
     fpos = {}
-    for i in (1, 2,):
-        fpos[i] = np.zeros_like(fiducials)
+    fpos['pos1'] = np.zeros_like(fiducials)
+    fpos['pos2'] = np.zeros_like(fiducials)
 
-    mat = re.search(r"^pos([12])", yvec) if yvec else None
-    if args.error and not mat:
+    if args.error and 'pos' not in yvec:
         print >> sys.stdout, "Please specify \"-y pos\[12\]\" along with -error; ignoring -error"
         args.error = False
 
@@ -651,92 +733,89 @@ def main():
         # Read the fiducial file if provided
         if args.fiducialFile:
             vecs = read_fiducials(args.fiducialFile, axisName, False)[1] # just vecs
-
-            for n in (1, 2,):
-                # Set fpos[12] from those fiducial positions
+            for pos in ('pos1', 'pos2'):
                 for i in range(len(fiducials)):
-                    fpos[n][i] = np.mean(pos[n][fididx == fiducials[i]])
+                    tmp = vecs[pos][vecs['fididx'] == fiducials[i]]
+                    fpos[pos][i] = np.mean(tmp) if len(tmp) > 0 else 0
         else:
             # Find the true value for each fiducial we've crossed
             if args.read_old_mcpFiducials:
                 true1 = True
 
             for i in range(len(fiducials)):
-                fpos[1][i] = np.mean(true1[fididx == fiducials[i]])
+                fpos['pos1'][i] = np.mean(true1[vecs['fididx'] == fiducials[i]])
 
-            fpos[2] = fpos[1]
+            fpos['pos2'] = fpos['pos1']
 
-        if False:
-            for i in range(len(fiducials)):
-                print "%d %d" % (fiducials[i], fpos[1][i])
     else:
         # Reset the encoders every time that they pass some `fiducial' fiducial?
         if args.reset:
-            for i in (1, 2,):
-                reset_fiducials(fididx, ud_delta, velocity, pos[i], args.verbose if i == 1 else 0)
+            for pos in ('pos1','pos2'):
+                reset_fiducials(vecs['fididx'], ud_delta, vecs['velocity'], vecs[pos], args.verbose if i == 1 else 0)
         # Calculate mean values of pos[12]
         if args.updown:
             pos0 = {}
-            for j in (1, 2,):
-                pos0[j] = pos[j]       # save pos[j]
+            for pos in ('pos1','pos2'):
+                pos0[pos] = vecs[pos]       # save pos[pos]
 
                 for i in range(len(fiducials)):
-                    fpos[j][i] = np.mean(pos[j][fididx == fiducials[i]])
+                    fpos[pos][i] = np.mean(vecs[pos][vecs['fididx'] == fiducials[i]])
 
-                down = np.where(fididx < ud_delta)
-                tmp2 = fididx
+                down = np.where(vecs['fididx'] < ud_delta)
+                tmp2 = vecs['fididx']
                 tmp2[down] += ud_delta; tmp[np.logical_not(down)] -= ud_delta
 
-                tmp = fpos[j][fididx] + fpos[j][tmp2]
-                tmp = tmp/((fpos[j][fididx] != 0) + (fpos[j][tmp2] != 0))
+                tmp = fpos[pos][vecs['fididx']] + fpos[pos][tmp2]
+                tmp = tmp/((fpos[pos][vecs['fididx']] != 0) + (fpos[pos][tmp2] != 0))
                 
-                pos[j] -= fpos[j][fididx] - tmp
+                vecs[pos] -= fpos[pos][vecs['fididx']] - tmp
             # Undo that +$ud_delta
-            fididx[fididx > ud_delta] -= ud_delta
+            vecs['fididx'][vecs['fididx'] > ud_delta] -= ud_delta
             
-            fiducials = make_fiducials_vector(fididx)
+            fiducials = make_fiducials_vector(vecs['fididx'])
             
-            for j in (1, 2,):
-                fpos[j] = np.zeros_like(fiducials)
+            for pos in ('pos1','pos2'):
+                fpos[pos] = np.zeros_like(fiducials)
         # (Re)calculate fpos[12] --- `Re' if args.updown was true
         fposErr = {}; nfpos = {}
-        for i in (1, 2,):
-            nfpos[i] = np.empty_like(fiducials)
-            fposErr[i] = np.empty_like(fiducials)
+        for pos in ('pos1','pos2'):
+            nfpos[pos] = np.empty_like(fiducials)
+            fposErr[pos] = np.empty_like(fiducials)
 
         for i in range(len(fiducials)):
-            for j in (1, 2,):
-                tmp =  pos[j][fididx == fiducials[i]]
+            for pos in ('pos1','pos2'):
+                tmp =  vecs[pos][vecs['fididx'] == fiducials[i]]
                 if len(tmp) == 0:
-                    fposErr[j][i] = -9999 # disable fiducial
+                    fposErr[pos][i] = -9999 # disable fiducial
                 else:
-                    fpos[j][i] = np.mean(tmp)
+                    fpos[pos][i] = np.mean(tmp)
                     
-                    nfpos[j][i] = len(tmp)
-                    fposErr[j][i] = 1e10 if len(tmp) == 1 else np.std(tmp)
+                    nfpos[pos][i] = len(tmp)
+                    fposErr[pos][i] = 1e10 if len(tmp) == 1 else np.std(tmp)
         
         # restore values
         if args.updown:
-            for j in (1, 2,):
-                pos[j] = pos0[j]
+            for pos in ('pos1','pos2'):
+                vecs['pos'][pos] = pos0[pos]
 
     if not args.absolute:
-        for j in (1, 2,):
-            pos[j] = pos[j] - fpos[j][fididx]
+        for pos in ('pos1','pos2'):
+            vecs[pos] = vecs[pos] - fpos[pos][vecs['fididx']]
 
     if args.scale:
-        axis_scale = do_scale()
+        axis_scale = do_scale(fiducials, fiducials_deg, axisName, vecs['pos'], fpos, nfpos, vecs['fididx'], verbose=args.verbose)
+
 
     # Fix fiducial positions to match canonical value for some fiducial?
     if args.canonical:
-        for n in (1, 2,):
-            if fpos.has_key(n):
-                tmp  = fpos[n][fiducials == ff]
+        for pos in ('pos1','pos2'):
+            if fpos.has_key(pos):
+                tmp  = fpos[pos][fiducials == ff]
                 tmp = tmp[tmp != 0]     # valid crossings aren't == 0
                 if len(tmp) == 0:
                     raise RuntimeError("You have not crossed/successfully read canonical fiducial %d" % ff)
 
-                fpos[n][nfpos[n] > 0] += ffval - np.mean(tmp)
+                fpos[pos][nfpos[pos] > 0] += ffval - np.mean(tmp)
 
     # Print table?
     if args.tableFile:
@@ -767,100 +846,16 @@ def main():
         for i in range(1, len(fpos[1])):
             print >> fd, "%-4d " % fiducials[i],
             
-            for n in (1, 2,):
+            for n in ('pos1','pos2'):
                 print >> fd, "   %10.0f +- %5.1f %3d" % (fpos[n][i], fposErr[n][i], nfpos[n][i]),
             print >> fd, ""
         
         if fd != sys.stdout:
             fd.close()
 
-    # Make desired plot
-    if xvec:
-        # Create the index vector if we need it
-        if xvec == "index" or 'index' not in locals():
-            index = np.arange(0, len(pos[1]))
+    plot_data(axisName, vecs, index, args.plotFile, ffile, args.ms, args.reset, args.updown, time0, tbase)
 
-        if args.plotFile:
-            if args.plotFile == "file":
-                args.plotFile = "%s-%s-%s" % (axisName, xvec, yvec)
-                if args.reset:
-                    args.plotFile += "-R"
-                if args.updown:
-                    args.plotFile += "-U"
-                args.plotFile += ".png"
-        nameToVec = dict(index=index, time=time, pos1=pos[1], pos2=pos[2], fididx=fididx, deg=deg)
-        x = nameToVec.get(xvec)         # xvec is a name; x is a numpy array
-        y = nameToVec.get(yvec)
-
-        if x is None:
-            raise RuntimeError("Invalid x-vector: %s" % xvec)
-        if y is None:
-            raise RuntimeError("Invalid y-vector: %s" % yvec)
-
-        if args.error:
-            haveValue = np.where(fpos[1][fididx] != 0) # we have a measurement of this fiducial
-            if args.errormax > 0:
-                haveValue = np.logical_and(haveValue, abs(y) < args.errormax)
-
-            x = x[haveValue]
-            y = y[haveValue]
-            if xvec != "velocity" and yvec != "velocity":
-                velocity = velocity[haveValue]
-
-        # Have to delete this from the local mapping, as it breaks matplotlib's
-        # TK backend. It will still be set for the shell when we exit.
-        if os.environ.get('TCL_LIBRARY',None) is not None:
-            del os.environ['TCL_LIBRARY']
-        fig = pyplot.figure(figsize=(10,8))
-        axes = fig.add_axes((0.1, 0.1, 0.85, 0.80));
-
-        xmin = min(x); xmax = max(x)
-        ymin = min(y); ymax = max(y)
-
-        if xvec == "time":
-            if args.time0 != 0:
-                xmin = time0 - tbase
-            if args.time1 != 0:
-                xmax = time1 - tbase
-
-        # set limits to just beyond the data on all sides
-        axes.margins(0.1)
-
-        l = velocity >= 0
-        axes.plot(x[l], y[l], "rx",ms=10,mew=3,label='v>=0')
-        l = velocity < 0
-        axes.plot(x[l], y[l], "g+",ms=10,mew=3,label='v<0')
-
-        if args.ms:
-            plot_ms(fig, ms_on, ms_off, axisName, tbase)
-
-        title = axisName
-        if args.reset:
-            title += " -reset"
-        if args.updown:
-            title += " -updown"
-
-        if args.fiducialFile:
-            title += "  %s" % ffile
-        axes.set_title(title)
-
-        if xvec == "time" and tbase:
-            if args.verbose:
-                print "Initial time on plot:",tbase-xmin
-            axes.set_xlabel("time - %s" % tbase)
-        else:
-            axes.set_xlabel(xvec)
-
-        axes.set_ylabel(yvec)
-
-        legend = axes.legend(loc='best',numpoints=1, fancybox=True, framealpha=0.5)
-
-        fig.show()
-
-        if args.plotFile:
-            fig.savefig(args.plotFile)
-
-        raw_input("Press enter to exit... ")
+    raw_input("Press enter to exit... ")
 
 if __name__ == "__main__":
     main()
