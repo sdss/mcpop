@@ -41,10 +41,16 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
     fiducial in the vector fididx
     """
 
-    # Find the indices where the velocity changes sign
-    v0 = list(v for v in velocity); v0[0:0]        = [velocity[0]]; v0 = np.array(v0)
-    v1 = list(v for v in velocity); v1[len(v1):] = [-velocity[-1]]; v1 = np.array(v1)
-    tmp = np.arange(0, len(pos) + 1)[v0*v1 < 0]
+    # # Find the indices where the velocity changes sign
+    sign = np.greater_equal(velocity,0)
+    tmp = (np.roll(sign, 1) - sign) != 0
+    # if tmp[0]: tmp[-1] = True
+    tmp = np.arange(0,len(pos))[tmp]
+    # add in the last element, if the first element is 0:
+    # v0 = list(v for v in velocity); v0[0:0]        = [velocity[0]]; v0 = np.array(v0)
+    # v1 = list(v for v in velocity); v1[len(v1):] = [-velocity[-1]]; v1 = np.array(v1)
+    # tmp = np.arange(0, len(pos) + 1)[v0*v1 < 0]
+    print tmp
 
     # Generate a vector with the `sweep number', incremented every time
     # the velocity changes sign
@@ -54,6 +60,7 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
 
     sweep += (len(fididx) - len(sweep))*[i] # make sweep and fididx have same length
     sweep = np.array(sweep)
+    print sweep
 
     # Choose the average fiducial as a standard (it should be in the middle of the range), resetting the
     # offset to zero whenever we see it
@@ -80,6 +87,7 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
 
     # Did any sweeps miss the `canonical' fiducials?
     nsweep = sweep[-1] + 1
+    print nsweep
     for s in range(nsweep):
         if corrections.has_key(s):
             continue                    # already got it
@@ -96,6 +104,7 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
 
         if s0 >= 0:
             if s1 < nsweep:              # we have two points
+                print s0,s1
                 corrections[s] = corrections[s0] + \
                     float(s - s0)/(s1 - s0)*(corrections[s1] - corrections[s0])
             else:
@@ -171,7 +180,7 @@ def read_fiducials(fiducial_file, axisName, readHeader=True):
             header[var] = val
 
     # Done with header; read data
-    vecNames = [("findex", 0, int), ("p1", 1, float), ("p2", 5, float)]
+    vecNames = [("findex", 0, int), ("pos1", 1, float), ("pos2", 5, float)]
     vecs = {}
     for v, col, t in vecNames:
         vecs[v] = []
@@ -249,7 +258,7 @@ def set_canonical_fiducials(ff, axisName, fiducialFile):
         ffval = 3825222
     elif axisName == 'rotator':
         if ff is None:
-            ff = 78
+            ff = 75
         ffval = 168185
 
     if not fiducialFile:
@@ -267,29 +276,14 @@ def set_canonical_fiducials(ff, axisName, fiducialFile):
         raise RuntimeError("You may only use -setCanonical %d if %d is the canonical fiducial in %s" %
                            (ff, ff, ffile))
 
-    ffval = (vecs["p1"][vecs["findex"] == ff][0]).copy()
+    ffval = (vecs["pos1"][vecs["findex"] == ff][0]).copy()
 
     print "Using canonical position %d for fiducial %d from %s" % (ffval, ff , ffile)
 
     return ff,ffval,ffile
 
 def plot_one(fig, ax, x, y, xlabel, ylabel, axisName, velocity, ffile,
-             ms, reset, updown, time0, tbase):
-
-    # !!!!!!!!!
-    # TBD: need to re-include this!
-    # if args.error:
-    #     haveValue = np.where(fpos[1][fididx] != 0) # we have a measurement of this fiducial
-    #     if args.errormax > 0:
-    #         haveValue = np.logical_and(haveValue, abs(y) < args.errormax)
-
-    #     x = x[haveValue]
-    #     y = y[haveValue]
-    #     if xlabel != "velocity" and ylabel != "velocity":
-    #         velocity = velocity[haveValue]
-    # !!!!!!!!!
-
-    # axes = fig.add_axes((0.1, 0.1, 0.85, 0.80));
+             ms, time0, tbase):
 
     xmin = min(x); #xmax = max(x)
     # ymin = min(y); ymax = max(y)
@@ -302,28 +296,26 @@ def plot_one(fig, ax, x, y, xlabel, ylabel, axisName, velocity, ffile,
 
     # set limits to just beyond the data on all sides
     ax.margins(0.1)
+    ax.yaxis.grid(True, which='major')
 
     l = velocity >= 0
     ax.plot(x[l], y[l], "rx",ms=10,mew=3,label='v>=0')
     l = velocity < 0
     ax.plot(x[l], y[l], "g+",ms=10,mew=3,label='v<0')
 
-    if ms:
+    if xlabel == 'time' and ms:
         plot_ms(fig, ms['on'], ms['off'], axisName, tbase)
 
-    ax.set_ylabel(ylabel)
     if xlabel == "time" and tbase:
         print "Initial time on plot:",tbase-xmin
         ax.set_xlabel("time - %s" % tbase)
     else:
         ax.set_xlabel(xlabel)
 
-    ax.legend(loc='best',numpoints=1, fancybox=True, framealpha=0.5)
-
     fig.show()
 
 def plot_data(axisName, vecs, index, plotFile, ffile,
-              ms, reset, updown, time0, tbase):
+              ms, reset, updown, error, time0, tbase):
     """Generate plots of (time,deg,index,etc.) vs. the fiducial positions."""
 
     def make_filename(axisName,xlabel,ylabel):
@@ -333,6 +325,8 @@ def plot_data(axisName, vecs, index, plotFile, ffile,
                 filename += "-R"
             if updown:
                 filename += "-U"
+            if updown:
+                filename += "-E"
             filename += ".png"
         else:
             filename = ''
@@ -348,23 +342,36 @@ def plot_data(axisName, vecs, index, plotFile, ffile,
         title += " -reset"
     if updown:
         title += " -updown"
+    if error:
+        title += " -error"
     title += "\n  %s" % ffile
 
-    labels = ['index','deg','time','fididx']
-    for ylabel in ['pos1','pos2']:
-        fig = pyplot.figure(figsize=(18,10))
-        gs = gridspec.GridSpec(2, 2)#, height_ratios=[3, 1])
+    labels = ['time','deg','index','fididx']
+    for ylabel in ['pos2','pos1']:
+        fig = pyplot.figure(figsize=(16,10))
+        gs = gridspec.GridSpec(2, 2, wspace=0.02)#, height_ratios=[3, 1])
         ax = []
         pyplot.suptitle(title)
         for i,xlabel in enumerate(labels):
-            ax.append(pyplot.subplot(gs[i]))
+            # right-side plots share the y axis.
+            if i % 2 == 0:
+                ax.append(pyplot.subplot(gs[i]))
+                ax[i].set_ylabel(ylabel)
+            else:
+                ax.append(pyplot.subplot(gs[i],sharey=ax[i-1]))
+                pyplot.setp(ax[i].get_yticklabels(), visible=False)
+                ax[i].yaxis.tick_right()
+
             plotfile = make_filename(axisName,xlabel,ylabel)
             if xlabel == 'index':
-                plot_one(fig, ax[i], index, vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, reset, updown, time0, tbase)
+                plot_one(fig, ax[i], index, vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, time0, tbase)
             else:
-                plot_one(fig, ax[i], vecs[xlabel], vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, reset, updown, time0, tbase)
+                plot_one(fig, ax[i], vecs[xlabel], vecs[ylabel], xlabel, ylabel, axisName, vecs['velocity'], ffile, ms, time0, tbase)
+            # use this for the label, incase we plotted with 'ms'
+            if xlabel == 'time':
+                ax[i].legend(loc='best',numpoints=1, fancybox=True, ncol=2, bbox_to_anchor=(0.4,1.15))
         if plotfile:
-            fig.savefig(plotfile)
+            fig.savefig(plotfile, bbox_inches="tight")
 
 def plot_ms(fig, ms_on, ms_off, axisName, tbase):
     """Plot the ms on/off values as blue and cyan points, respectively."""
@@ -506,17 +513,15 @@ def main():
                         help="Plot the values of the encoder, not the scatter about the mean")
     parser.add_argument("-updown", action="store_true", default=False,
                         help="Analyze the `up' and `down' crossings separately")
-    
-    parser.add_argument("-xvec", type=str, help="Vector to use on x-axis (no plot if omitted)")
-    parser.add_argument("-yvec", type=str, help="Vector to use on y-axis")
+
+    parser.add_argument("-ms", action="store_true", default=False,
+                        help="Show MS actions on the time axis")
     parser.add_argument("-fiducialFile", type=str, default="",
                         help="""Read true positions of fiducials from this file rather
  than using the values in the mcpFiducials file.
  Filename may be a format, in which case %%s will be replaced by e.g. \"rot\".
  If you prefer, you may simple specify an MCP version number.\
  """)
-    parser.add_argument("-ms", action="store_true", default=False,
-                        help="Show MS actions (must have -xvec time)")
     parser.add_argument("-plotFile", action="store_true", help="""Write plot to a file (name automatically determined).""")
     parser.add_argument("-tableFile", type=str, default='',
                         help="Write fiducials table to this file (may be \"stdout\", or \"-\")")
@@ -564,16 +569,10 @@ def main():
                 print "-scale only makes sense with -absolute; I'll set it for you"
             args.absolute = True
 
-    if args.xvec and not pyplot:
+    if pyplot is None:
         print >> sys.stderr, "I am unable to plot as I failed to import matplotlib"
-        args.xvec = None
 
-    if args.ms and args.xvec != "time":
-        print >> sys.stderr, "-ms only makes sense with -xvec time; ignoring"
-        args.ms = False
-    #
     # Which axis are we interested in?
-    #
     naxis = args.azimuth + args.altitude + args.rotator
           
     if not naxis:
@@ -603,22 +602,6 @@ def main():
         names.append("true2")
 
     dfile = get_fiducial_file(args.fileName, args.mjd, args.mjd_dir_fmt, verbose=args.verbose)
-
-#L202
-    # Check that the requested vectors exist
-    xvec, yvec = args.xvec, args.yvec
-
-    if xvec and not yvec:
-        yvec = "pos1"
-
-    if xvec and names.count(xvec) == 0:
-        if xvec == "i":                 # plot against the index
-            xvec = "index"
-
-        if xvec != "index":
-            raise RuntimeError("There is no vector %s in the file" % xvec)
-    if yvec and names.count(yvec) == 0:
-        raise RuntimeError("There is no vector %s in the file" % yvec)
 
     # What are the canonical values of the fiducials?  We get them from a pre-existing fiducials file
     # not specified via -setCanonical
@@ -683,13 +666,9 @@ def main():
     # Reduce time to some readable value
     vecs['time'] -= tbase
     # Discard the non-mark rotator fiducials
-    # !!!!!!!!!!!!!!!!!!!!
-    # TBD: what does this mean?
-    # !!!!!!!!!!!!!!!!!!!!
     if args.rotator:
         tmp  = vecs['fididx'] > 0
-        for v in vecs.values():
-            c = v[tmp]
+        vecs = vecs[tmp]
 
     if args.verbose:
         fiducials = make_fiducials_vector(vecs['fididx'], False)
@@ -725,18 +704,14 @@ def main():
     fpos['pos1'] = np.zeros_like(fiducials)
     fpos['pos2'] = np.zeros_like(fiducials)
 
-    if args.error and 'pos' not in yvec:
-        print >> sys.stdout, "Please specify \"-y pos\[12\]\" along with -error; ignoring -error"
-        args.error = False
-
     if args.error:
         # Read the fiducial file if provided
         if args.fiducialFile:
-            vecs = read_fiducials(args.fiducialFile, axisName, False)[1] # just vecs
+            tempvec = read_fiducials(args.fiducialFile, axisName, False)[1] # just vecs
             for pos in ('pos1', 'pos2'):
                 for i in range(len(fiducials)):
-                    tmp = vecs[pos][vecs['fididx'] == fiducials[i]]
-                    fpos[pos][i] = np.mean(tmp) if len(tmp) > 0 else 0
+                    tmp = tempvec[pos][tempvec['findex'] == fiducials[i]]
+                    fpos[pos][i] = tmp[0] if len(tmp) > 0 else 0
         else:
             # Find the true value for each fiducial we've crossed
             if args.read_old_mcpFiducials:
@@ -750,8 +725,9 @@ def main():
     else:
         # Reset the encoders every time that they pass some `fiducial' fiducial?
         if args.reset:
-            for pos in ('pos1','pos2'):
-                reset_fiducials(vecs['fididx'], ud_delta, vecs['velocity'], vecs[pos], args.verbose if i == 1 else 0)
+            reset_fiducials(vecs['fididx'], ud_delta, vecs['velocity'], vecs['pos1'], args.verbose)
+            reset_fiducials(vecs['fididx'], ud_delta, vecs['velocity'], vecs['pos2'], False) # don't double-print
+
         # Calculate mean values of pos[12]
         if args.updown:
             pos0 = {}
@@ -853,7 +829,13 @@ def main():
         if fd != sys.stdout:
             fd.close()
 
-    plot_data(axisName, vecs, index, args.plotFile, ffile, args.ms, args.reset, args.updown, time0, tbase)
+    if args.error:
+        haveValue = np.where(fpos['pos1'][vecs['fididx']] != 0) # we have a measurement of this fiducial
+        if args.errormax > 0:
+            haveValue = haveValue & abs(vecs['pos1']) < args.errormax
+        vecs = vecs[haveValue]
+
+    plot_data(axisName, vecs, index, args.plotFile, ffile, ms, args.reset, args.updown, args.error, time0, tbase)
 
     raw_input("Press enter to exit... ")
 
