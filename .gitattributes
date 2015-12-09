@@ -22,5 +22,16 @@ src/main.c -text
 src/mcp_sockets.c -text
 src/mcp_sockets.h -text
 src/tclMcp.c -text
+test_mcpop/data/57253/mcpCmdLog-57253.dat.gz -text
+test_mcpop/data/57253/mcpFiducials-57253.dat.gz -text
+test_mcpop/data/v1_117/Makefile -text
+test_mcpop/data/v1_117/alt.dat -text
+test_mcpop/data/v1_117/az.dat -text
+test_mcpop/data/v1_117/rot.dat -text
+test_mcpop/data/v1_117/ups/mcp_fiducials.table -text
+test_mcpop/data/v1_118/alt.dat -text
+test_mcpop/data/v1_118/az.dat -text
+test_mcpop/data/v1_118/rot.dat -text
+test_mcpop/test_plotMcpFiducials.py -text
 ups/Makefile -text
 ups/mcpop.table -text
