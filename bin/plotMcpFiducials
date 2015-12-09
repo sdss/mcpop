@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 """
 Plot and analyze new fiducial data before applying it to the mcp.
 
@@ -27,6 +27,7 @@ except ImportError:
 
 import numpy as np
 np.seterr(all='raise')
+np.seterr(invalid='warn')
 from sdss.utilities import yanny
 
 def getMJD():
@@ -42,35 +43,33 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
     """
 
     # # Find the indices where the velocity changes sign
+    # NOTE: we do want to catch the first and last elements!
     sign = np.greater_equal(velocity,0)
-    tmp = (np.roll(sign, 1) - sign) != 0
-    # if tmp[0]: tmp[-1] = True
-    tmp = np.arange(0,len(pos))[tmp]
-    # add in the last element, if the first element is 0:
-    # v0 = list(v for v in velocity); v0[0:0]        = [velocity[0]]; v0 = np.array(v0)
-    # v1 = list(v for v in velocity); v1[len(v1):] = [-velocity[-1]]; v1 = np.array(v1)
-    # tmp = np.arange(0, len(pos) + 1)[v0*v1 < 0]
-    print tmp
+    sign_changes = (np.roll(sign, 1) - sign) != 0
+    # add in the last element if we counted the first
+    # (so we're counting both) front and back of the array)
+    if sign_changes[0]: sign_changes[-1] = True
+    sign_changes = np.arange(0,len(pos))[sign_changes]
 
     # Generate a vector with the `sweep number', incremented every time
     # the velocity changes sign
-    sweep = []                          # vector specifying which sweep the fiducial belongs to
-    for i in range(len(tmp) - 1):
-        sweep += (tmp[i+1] - tmp[i])*[i]
+    sweep = []                    # which sweep the fiducial belongs to
+    for i in range(len(sign_changes) - 1):
+        sweep += (sign_changes[i+1] - sign_changes[i])*[i]
 
     sweep += (len(fididx) - len(sweep))*[i] # make sweep and fididx have same length
     sweep = np.array(sweep)
     print sweep
 
-    # Choose the average fiducial as a standard (it should be in the middle of the range), resetting the
-    # offset to zero whenever we see it
+    # Choose the average fiducial as a standard (it should be in the middle of
+    # the range), resetting the offset to zero whenever we see it
     nff, ff = 0, 0.0
-    for i in range(len(tmp)):
-        tmp = fididx[np.where(sweep == i)]
-        tmp[np.where(tmp > ud_delta)] -= ud_delta
+    for i in range(len(sign_changes)):
+        sign_changes = fididx[np.where(sweep == i)]
+        sign_changes[np.where(sign_changes > ud_delta)] -= ud_delta
 
-        ff += sum(tmp)
-        nff += len(tmp)
+        ff += sum(sign_changes)
+        nff += len(sign_changes)
 
     ff = int(ff/nff + 0.5); ffval = 0.0
     if verbose:
@@ -104,6 +103,8 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
 
         if s0 >= 0:
             if s1 < nsweep:              # we have two points
+                import ipdb
+                ipdb.set_trace()
                 print s0,s1
                 corrections[s] = corrections[s0] + \
                     float(s - s0)/(s1 - s0)*(corrections[s1] - corrections[s0])
@@ -118,7 +119,7 @@ def reset_fiducials(fididx, ud_delta, velocity, pos, verbose):
         corr[sweep == s] = c
 
     # Apply those corrections
-    pos += corr
+    pos += np.int32(corr)
 
     return pos
 
@@ -440,13 +441,13 @@ def do_scale(fiducials, fiducials_deg, axisName, pos, fpos, nfpos, fididx, verbo
                     break
 
             axis_scale[n] = 1.0/(v0 - v1) # n.b. -ve; not a real scale
-            print >> sys.stderr, "%s scale APPROX %.6f  (encoder $n)"%\
+            print >> sys.stderr, "%s scale APPROX %.6f  (encoder %s)"%\
                 (axisName, 60*60*(deg0 - deg1)*axis_scale[n], n)
         else:
             diff /= ndiff
             axis_scale[n] = 60*60*360.0/diff
             
-            print "%s scale = %.6f  (encoder %d)" % (axisName, axis_scale[n], n)
+            print "%s scale = %.6f  (encoder %s)" % (axisName, axis_scale[n], n[-1])
             #
             # Force fiducials to have that scale
             #
@@ -456,18 +457,54 @@ def do_scale(fiducials, fiducials_deg, axisName, pos, fpos, nfpos, fididx, verbo
                     fpos[n][i] = mean
                     fpos[n][match[i]] = mean + diff
 
-    print "Encoder2/Encoder1 - 1 = %.6e" % (axis_scale[2]/axis_scale[1] - 1)
+    print "Encoder2/Encoder1 - 1 = %.6e" % (axis_scale['pos2']/axis_scale['pos1'] - 1)
     return axis_scale
 
-def main():
+def write_table_file(tableFile, fiducials, fpos, fposErr, nfpos,
+                     axisName, dfile, axis_scale, ff, argv):
+    """Write the results to a fiducials table file for the MCP to use."""
+    if tableFile in ("stdout", "-",):
+        fd = sys.stdout
+    else:
+        fd = open(tableFile, "w")
+
+    # Get a CVS Name tag w/o writing it out literally.
+    cvsname = "".join(["$", "Name", "$"])
+
+    print >> fd, """#
+# %s fiducials
+#
+# %s
+#
+# Creator:                 %s
+# Time:                    %s
+# Input file:              %s
+# Scales:                  %.6f %.6f
+# Canonical fiducial:      %d
+# Arguments:               %s
+#
+# Fiducial Encoder1 +- error  npoint  Encoder2 +- error  npoint
+""" % (axisName, cvsname, pwd.getpwuid(os.geteuid())[0],
+   pyTime.time(), dfile, axis_scale['pos1'], axis_scale['pos2'], ff, argv),
+
+    for i in range(1, len(fpos['pos1'])):
+        print >> fd, "%-4d " % fiducials[i],
+        
+        for n in ('pos1','pos2'):
+            print >> fd, "   %10.0f +- %5.1f %3d" % (fpos[n][i], fposErr[n][i], nfpos[n][i]),
+        print >> fd, ""
+    
+    if fd != sys.stdout:
+        fd.close()
+
+
+def main(argv=None):
     import argparse
 
     """Read and analyze an mcpFiducials file
     e.g.
-    plotMcpFiducials -mjd 51799 --alt -y pos1 -x time -reset -canon -updown -table stdout
+    plotMcpFiducials -mjd 51799 --alt -reset -canon -updown -table stdout
     """
-
-    argv = " ".join(sys.argv)
 
     parser = argparse.ArgumentParser("plotMcpFiducials")
     parser.add_argument("fileName", type=str, nargs="?", help="The mcpFiducials file to read")
@@ -522,6 +559,7 @@ def main():
  Filename may be a format, in which case %%s will be replaced by e.g. \"rot\".
  If you prefer, you may simple specify an MCP version number.\
  """)
+    parser.add_argument("-noplot",action="store_true",help="Don't generate any plots.")
     parser.add_argument("-plotFile", action="store_true", help="""Write plot to a file (name automatically determined).""")
     parser.add_argument("-tableFile", type=str, default='',
                         help="Write fiducials table to this file (may be \"stdout\", or \"-\")")
@@ -531,7 +569,7 @@ def main():
     parser.add_argument("-read_old_mcpFiducials", action="store_true", default=False,
                         help="Read old mcpFiducial files (without encoder2 info)?")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     #
     # Check that flags make sense
     #
@@ -778,8 +816,9 @@ def main():
         for pos in ('pos1','pos2'):
             vecs[pos] = vecs[pos] - fpos[pos][vecs['fididx']]
 
+    axis_scale=None
     if args.scale:
-        axis_scale = do_scale(fiducials, fiducials_deg, axisName, vecs['pos'], fpos, nfpos, vecs['fididx'], verbose=args.verbose)
+        axis_scale = do_scale(fiducials, fiducials_deg, axisName, vecs, fpos, nfpos, vecs['fididx'], verbose=args.verbose)
 
 
     # Fix fiducial positions to match canonical value for some fiducial?
@@ -791,43 +830,12 @@ def main():
                 if len(tmp) == 0:
                     raise RuntimeError("You have not crossed/successfully read canonical fiducial %d" % ff)
 
-                fpos[pos][nfpos[pos] > 0] += ffval - np.mean(tmp)
+                fpos[pos][nfpos[pos] > 0] += np.int64(ffval - np.mean(tmp))
 
     # Print table?
     if args.tableFile:
-        if args.tableFile in ("stdout", "-",):
-            fd = sys.stdout
-        else:
-            fd = open(args.tableFile, "w")
-
-        # Get a CVS Name tag w/o writing it out literally.
-        cvsname = "".join(["$", "Name", "$"])
-
-        print >> fd, """#
-# %s fiducials
-#
-# %s
-#
-# Creator:                 %s
-# Time:                    %s
-# Input file:              %s
-# Scales:                  %.6f %.6f
-# Canonical fiducial:      %d
-# Arguments:               %s
-#
-# Fiducial Encoder1 +- error  npoint  Encoder2 +- error  npoint
-""" % (axisName, cvsname, pwd.getpwuid(os.geteuid())[0],
-       pyTime.time(), dfile, axis_scale[1], axis_scale[2], ff, argv),
-
-        for i in range(1, len(fpos[1])):
-            print >> fd, "%-4d " % fiducials[i],
-            
-            for n in ('pos1','pos2'):
-                print >> fd, "   %10.0f +- %5.1f %3d" % (fpos[n][i], fposErr[n][i], nfpos[n][i]),
-            print >> fd, ""
-        
-        if fd != sys.stdout:
-            fd.close()
+        write_table_file(args.tableFile, fiducials, fpos, fposErr, nfpos,
+                         axisName, dfile, axis_scale, ff, argv)
 
     if args.error:
         haveValue = np.where(fpos['pos1'][vecs['fididx']] != 0) # we have a measurement of this fiducial
@@ -835,9 +843,10 @@ def main():
             haveValue = haveValue & abs(vecs['pos1']) < args.errormax
         vecs = vecs[haveValue]
 
-    plot_data(axisName, vecs, index, args.plotFile, ffile, ms, args.reset, args.updown, args.error, time0, tbase)
-
-    raw_input("Press enter to exit... ")
+    if not args.noplot:
+        plot_data(axisName, vecs, index, args.plotFile, ffile, ms, args.reset, args.updown, args.error, time0, tbase)
+        raw_input("Press enter to exit... ")
+    return fiducials, fpos, fposErr, nfpos
 
 if __name__ == "__main__":
     main()
