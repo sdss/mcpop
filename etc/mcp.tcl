@@ -299,9 +299,14 @@ proc get_mcp_plc_versions {} {
       set mcpVersion "MCP: ???"
    }
    
-   if [catch {set plcVersion "PLC: [plcVersion]"}] {
+#jrh
+   if [ catch { set plcVersion "PLC: [lindex [mcpSystemStatus -misc] 1]" } ] {
       set plcVersion "PLC: ???"
    }
+
+#   if [catch {set plcVersion "PLC: [plcVersion]"}] {
+#      set plcVersion "PLC: ???"
+#   }
 
    if [regexp {\?\?\?|MISMATCH|NOTAG} $plcVersion] {
       set fg $menuColors(iack)
@@ -317,9 +322,15 @@ proc get_mcp_plc_versions {} {
    #
    # Now the fiducials
    #
-   if [catch {set _fiducialsVersion [fiducialsVersion]}] {
+   
+   # jrh
+   if [ catch {set _fiducialsVersion [lindex [mcpSystemStatus -misc] 2]}] {
       set _fiducialsVersion "???"
    }
+
+   #if [catch {set _fiducialsVersion [fiducialsVersion]}] {
+   #   set _fiducialsVersion "???"
+   #}
    
    if [regexp {(^\?\?\?|MISMATCH:|NOTAG|blank|NOCVS|undefined|[^:]+:[^:]+:[^:]+|[^|]+\|[^|]+\|[^|]+)$} $_fiducialsVersion] {
       set fg $menuColors(iack)
@@ -377,7 +388,7 @@ lappend mcpHelp_procs plcVersion
 
 proc plcVersion {args} {
    global interlockDescriptions
-   
+
    set opts [list \
 		 [list [info level 0] "Return PLC version"] \
 		 ]
@@ -387,7 +398,7 @@ proc plcVersion {args} {
    
    set version [lindex [mcpSystemStatus -misc] 1]
 
-   if {![regexp {Version ([^ ]+) +} \
+  if {![regexp {Version ([^ ]+) +} \
 	     $interlockDescriptions(version_id) {} plc_n]} {
       return "NOCVS:$version:$plc_n"
    } elseif {$version == ""} {
